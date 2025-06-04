@@ -1,8 +1,17 @@
 # FileMaker MCP Server
 
-This project implements a Model Context Protocol (MCP) server that dynamically exposes FileMaker scripts as tools. It uses Gradio to provide a user interface for interacting with these tools.
+This project implements a Model Context Protocol (MCP) server that dynamically exposes FileMaker scripts as tools. It uses Gradio with native MCP support to provide both a web interface and HTTP+SSE MCP endpoint.
+
+## Features
+
+- **Dynamic Tool Discovery**: Automatically discovers FileMaker scripts and exposes them as MCP tools
+- **Dual Interface**: Provides both web UI (Gradio) and MCP API (HTTP+SSE) 
+- **Docker Support**: Easy deployment with Docker and docker-compose
+- **Web Accessible**: Claude can connect via HTTP instead of requiring local setup
 
 ## Setup
+
+### Local Development
 
 1.  **Clone the repository:**
 
@@ -38,7 +47,24 @@ This project implements a Model Context Protocol (MCP) server that dynamically e
 
     Replace the placeholder values with your actual FileMaker credentials and database details.
 
+### Docker Deployment
+
+1.  **Using docker-compose (recommended):**
+
+    ```bash
+    docker-compose up -d
+    ```
+
+2.  **Using Docker directly:**
+
+    ```bash
+    docker build -t filemaker-mcp .
+    docker run -p 7860:7860 --env-file .env filemaker-mcp
+    ```
+
 ## Running the Server
+
+### Local Development
 
 1.  **Activate the virtual environment** (if not already active):
 
@@ -52,4 +78,63 @@ This project implements a Model Context Protocol (MCP) server that dynamically e
     python gradio_mcp_server.py
     ```
 
-This will start both the MCP server (listening on stdin/stdout for the MCP protocol) and a Gradio server (typically on port 7860) providing a web UI for the dynamically created tools.
+### Production (Docker)
+
+```bash
+docker-compose up -d
+```
+
+## Accessing the Server
+
+- **Web Interface**: http://localhost:7860
+- **MCP Endpoint**: http://localhost:7860/gradio_api/mcp/sse
+- **API Schema**: http://localhost:7860/gradio_api/mcp/schema
+
+## Claude Configuration
+
+### For HTTP+SSE (Web Deployment)
+
+Add to your Claude Desktop configuration:
+
+```json
+{
+  "mcpServers": {
+    "filemaker-mcp": {
+      "command": "npx",
+      "args": [
+        "mcp-remote", 
+        "http://your-server:7860/gradio_api/mcp/sse"
+      ]
+    }
+  }
+}
+```
+
+### For Local Development (stdio)
+
+```json
+{
+  "mcpServers": {
+    "filemaker-mcp": {
+      "command": "/path/to/your/venv/bin/python3",
+      "args": ["/path/to/gradio_mcp_server.py"],
+      "cwd": "/path/to/project",
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+## Architecture
+
+```
+FileMaker Database → REST API → Gradio Functions → MCP Tools (HTTP+SSE)
+                                      ↓
+                              Web Interface (Gradio UI)
+```
+
+The server:
+1. Connects to FileMaker via REST API
+2. Discovers available scripts dynamically
+3. Creates Gradio-compatible functions for each script
+4. Exposes both web UI and MCP endpoint simultaneously

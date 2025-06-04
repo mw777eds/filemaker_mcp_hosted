@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  filemaker-mcp:
+    build: .
+    ports:
+      - "7860:7860"
+    environment:
+      - FM_USERNAME=${FM_USERNAME}
+      - FM_PASSWORD=${FM_PASSWORD}
+      - FM_HOST=${FM_HOST}
+      - FM_DATABASE=${FM_DATABASE}
+      - FM_LAYOUT=${FM_LAYOUT}
+      - GRADIO_MCP_SERVER=True
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

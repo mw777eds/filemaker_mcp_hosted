@@ -1,13 +1,20 @@
 {
   "globalShortcut": "Shift+Ctrl+Space",
   "mcpServers": {
-    "filemaker-mcp": {
+    "filemaker-mcp-local": {
       "command": "/Users/michaelwallace/Documents/python-apps/mcp-server-demo/.venv/bin/python3",
       "args": [
         "/Users/michaelwallace/Documents/python-apps/mcp-server-demo/gradio_mcp_server.py"
       ],
       "cwd": "/Users/michaelwallace/Documents/python-apps/mcp-server-demo",
       "transport": "stdio"
+    },
+    "filemaker-mcp-http": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://localhost:7860/gradio_api/mcp/sse"
+      ]
     }
   }
 }
