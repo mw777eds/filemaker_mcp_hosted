@@ -6,11 +6,7 @@ import json
 from typing import Any, Dict, Callable, List
 import sys
 import time
-from mcp.server.fastmcp import FastMCP
-import threading
 from urllib.parse import urlencode
-import inspect # Needed for inspecting generated functions later
-import types # Needed for dynamic function creation if not using exec
 
 def log_info(msg):
     print(msg, file=sys.stderr)
@@ -104,8 +100,8 @@ def get_tools_from_filemaker() -> list:
         log_error(f"Error fetching tool list from FileMaker after {time.time() - start_time:.2f} seconds: {e}")
         raise
 
-def create_dynamic_tool(tool_data: Dict[str, Any]) -> Callable:
-    """Create a dynamic tool function from tool metadata."""
+def create_gradio_function(tool_data: Dict[str, Any]) -> Callable:
+    """Create a Gradio-compatible function from tool metadata."""
     function = tool_data['function']
     name = function['name']
     description = function.get('description', '')
@@ -113,40 +109,58 @@ def create_dynamic_tool(tool_data: Dict[str, Any]) -> Callable:
     properties = parameters.get('properties', {})
     required = parameters.get('required', [])
 
-    log_info(f"Creating tool function for {name} with parameters: {list(properties.keys())}")
+    log_info(f"Creating Gradio function for {name} with parameters: {list(properties.keys())}")
 
-    # Create function code with explicit parameters
-    def create_tool_function():
-        # Build the function signature - required parameters first, then optional ones
-        required_params = []
-        optional_params = []
+    # Build the function signature with proper type hints
+    def create_function():
+        # Build parameter list with type hints
+        param_list = []
+        type_mapping = {
+            'string': 'str',
+            'number': 'float', 
+            'integer': 'int',
+            'boolean': 'bool'
+        }
         
         for param_name, param_info in properties.items():
+            param_type = param_info.get('type', 'string')
+            python_type = type_mapping.get(param_type, 'str')
+            
             if param_name in required:
-                required_params.append(param_name)
+                param_list.append(f"{param_name}: {python_type}")
             else:
-                optional_params.append(f"{param_name}=None")
+                param_list.append(f"{param_name}: {python_type} = None")
 
-        # Combine required and optional parameters
-        param_list = required_params + optional_params
         param_str = ", ".join(param_list)
 
+        # Create docstring with Args section for Gradio MCP
+        args_section = ""
+        if properties:
+            args_section = "\n    Args:\n"
+            for param_name, param_info in properties.items():
+                param_desc = param_info.get('description', '')
+                param_type = param_info.get('type', 'string')
+                args_section += f"        {param_name} ({param_type}): {param_desc}\n"
+
         # Create the function code
-        func_code = f"""
-def {name}({param_str}):
-    \"\"\"
-    {description}
-    \"\"\"
+        func_code = f'''
+def {name}({param_str}) -> str:
+    """{description}{args_section}
+    Returns:
+        str: The result from FileMaker script execution
+    """
     params = {{}}
-"""
+'''
         # Add parameter collection
         for param_name in properties.keys():
             func_code += f"    if {param_name} is not None:\n"
             func_code += f"        params['{param_name}'] = {param_name}\n"
 
-        func_code += f"""
-    return call_filemaker_script("{name}", params)
-"""
+        func_code += f'''
+    result = call_filemaker_script("{name}", params)
+    return str(result)
+'''
+        
         # Create the function namespace
         namespace = {'call_filemaker_script': call_filemaker_script}
         
@@ -155,136 +169,108 @@ def {name}({param_str}):
         
         return namespace[name]
 
-    # Create the actual function
-    tool_function = create_tool_function()
-
-    # Set parameter annotations
-    type_mapping = {
-        'string': str,
-        'number': float,
-        'integer': int,
-        'boolean': bool,
-        'object': Dict[str, Any],
-        'array': List[Any]
-    }
-
-    annotations = {}
-    for param_name, param_info in properties.items():
-        param_type = param_info.get('type', 'string')
-        python_type = type_mapping.get(param_type, Any)
-        annotations[param_name] = python_type
-
-    tool_function.__annotations__ = annotations
-    log_info(f"Successfully created tool function for {name} with annotations: {annotations}")
-
+    # Create and return the function
+    tool_function = create_function()
+    log_info(f"Successfully created Gradio function for {name}")
     return tool_function
 
-# Create MCP server
-server = FastMCP("FileMaker Tools")
-
-# Create Gradio interface components for a tool
-def create_gradio_tool(tool_name: str, tool_func: Callable, tool_data: Dict[str, Any]) -> tuple[Callable, list, str, str]:
-    function = tool_data['function']
-    name = function['name']
-    description = function.get('description', '')
-    parameters = function.get('parameters', {})
-    properties = parameters.get('properties', {})
-    required = parameters.get('required', [])
-
-    # Create input components based on parameters
-    inputs = []
-    for param_name, param_info in properties.items():
-        param_type = param_info.get('type', 'string')
-        param_desc = param_info.get('description', '')
-
-        if param_type == 'string':
-            inputs.append(gr.Textbox(label=f"{param_name} ({param_desc})"))
-        elif param_type == 'number' or param_type == 'integer': # Handle both number and integer
-            inputs.append(gr.Number(label=f"{param_name} ({param_desc})"))
-        elif param_type == 'boolean':
-            inputs.append(gr.Checkbox(label=f"{param_name} ({param_desc})"))
-        else:
-            # Default to Textbox for unhandled types
-            inputs.append(gr.Textbox(label=f"{param_name} ({param_desc})"))
-
-    # The function to be called by Gradio is the imported tool_func
-    # We wrap it to ensure the return type is always string for Gradio Textbox output
-    def gradio_wrapper_func(*args):
-        # Map Gradio args back to keyword args based on the order of properties
-        kwargs = dict(zip(properties.keys(), args))
-        result = tool_func(**kwargs) # Call the imported tool function
-        return str(result) # Ensure string output for Gradio
-
-    return gradio_wrapper_func, inputs, name, description
-
-def setup_tools(server):
-    """Setup tools and return the Gradio interface"""
+def setup_gradio_interface():
+    """Setup Gradio interface with dynamic FileMaker tools"""
     log_info("Starting tool setup...")
     tools_data = get_tools_from_filemaker()
     log_info(f"Retrieved {len(tools_data)} tools from FileMaker")
 
-    # Create Gradio interface
-    with gr.Blocks() as demo:
-        gr.Markdown("# FileMaker MCP Tools")
+    # Store functions for Gradio interface creation
+    tool_functions = {}
+    
+    # Create functions for each tool
+    for tool_data in tools_data:
+        try:
+            tool_name = tool_data['function']['name']
+            log_info(f"Creating Gradio function: {tool_name}")
+            
+            # Create the Gradio-compatible function
+            tool_func = create_gradio_function(tool_data)
+            tool_functions[tool_name] = (tool_func, tool_data)
+            log_info(f"Successfully created Gradio function for {tool_name}")
+            
+        except Exception as e:
+            import traceback
+            log_error(f"Error creating function {tool_data.get('function', {}).get('name', 'unknown')}: {e}")
+            log_error(f"Traceback: {traceback.format_exc()}")
+            continue
+
+    # Create Gradio interface using gr.Interface for each tool
+    interfaces = []
+    for tool_name, (tool_func, tool_data) in tool_functions.items():
+        function = tool_data['function']
+        description = function.get('description', '')
+        parameters = function.get('parameters', {})
+        properties = parameters.get('properties', {})
         
-        # Create and register tools dynamically
-        for tool_data in tools_data:
-            try:
-                tool_name = tool_data['function']['name']
-                log_info(f"Creating tool: {tool_name}")
-                
-                # Create the dynamic tool function
-                tool_func = create_dynamic_tool(tool_data)
-                log_info(f"Successfully created function for {tool_name}")
-
-                # Register with MCP
-                server.tool(name=tool_name)(tool_func)
-                log_info(f"Registered MCP tool: {tool_name}")
-
-                # Create Gradio interface
-                log_info(f"Creating Gradio interface for {tool_name}")
-                gradio_func, inputs, name, description = create_gradio_tool(tool_name, tool_func, tool_data)
-                with gr.Tab(name):
-                    gr.Markdown(f"**{description}**")
-                    btn = gr.Button(f"Run {name}")
-                    output = gr.Textbox(label="Result")
-                    btn.click(gradio_func, inputs=inputs, outputs=output)
-                log_info(f"Created Gradio UI for tool: {tool_name}")
-            except Exception as e:
-                import traceback
-                log_error(f"Error creating tool {tool_data.get('function', {}).get('name', 'unknown')}: {e}")
-                log_error(f"Error details: {str(e)}")
-                log_error(f"Traceback: {traceback.format_exc()}")
-                # Continue with other tools even if one fails
-                continue
-
+        # Create input components
+        inputs = []
+        for param_name, param_info in properties.items():
+            param_type = param_info.get('type', 'string')
+            param_desc = param_info.get('description', '')
+            
+            if param_type == 'string':
+                inputs.append(gr.Textbox(label=f"{param_name}", placeholder=param_desc))
+            elif param_type in ['number', 'integer']:
+                inputs.append(gr.Number(label=f"{param_name}", info=param_desc))
+            elif param_type == 'boolean':
+                inputs.append(gr.Checkbox(label=f"{param_name}", info=param_desc))
+            else:
+                inputs.append(gr.Textbox(label=f"{param_name}", placeholder=param_desc))
+        
+        # Create interface for this tool
+        interface = gr.Interface(
+            fn=tool_func,
+            inputs=inputs,
+            outputs=gr.Textbox(label="Result"),
+            title=tool_name,
+            description=description
+        )
+        interfaces.append(interface)
+    
+    # Create tabbed interface if multiple tools, single interface if one tool
+    if len(interfaces) > 1:
+        demo = gr.TabbedInterface(
+            interfaces, 
+            tab_names=list(tool_functions.keys()),
+            title="FileMaker MCP Tools"
+        )
+    elif len(interfaces) == 1:
+        demo = interfaces[0]
+    else:
+        # Fallback if no tools found
+        demo = gr.Interface(
+            fn=lambda: "No tools available",
+            inputs=[],
+            outputs=gr.Textbox(label="Status"),
+            title="FileMaker MCP Tools"
+        )
+    
     return demo
 
 def main():
     """Main function to run the server"""
     try:
-        # Create MCP server first
-        log_info("Initializing MCP server...")
-        server = FastMCP("FileMaker Tools")
+        # Setup Gradio interface with MCP support
+        log_info("Setting up Gradio interface with MCP support...")
+        demo = setup_gradio_interface()
         
-        # Setup tools and get Gradio interface
-        log_info("Setting up tools and Gradio interface...")
-        demo = setup_tools(server)
-        
-        # Start Gradio server in a separate thread
-        log_info("Starting Gradio server...")
-        gradio_thread = threading.Thread(target=demo.launch, kwargs={'server_port': 7860})
-        gradio_thread.daemon = True  # Make thread daemon so it exits when main thread exits
-        gradio_thread.start()
-        log_info("Gradio server started in background thread")
-
-        # Run MCP server in the main thread
-        log_info("Starting FastMCP server with stdio transport...")
-        server.run(transport='stdio')
+        # Launch Gradio with MCP server enabled
+        log_info("Starting Gradio server with MCP support...")
+        demo.launch(
+            server_port=7860,
+            mcp_server=True,
+            share=False
+        )
 
     except Exception as e:
         import traceback
-        log_error("MCP server crashed during launch: " + str(e))
+        log_error("Server crashed during launch: " + str(e))
         log_error(traceback.format_exc())
         sys.exit(1)
 
