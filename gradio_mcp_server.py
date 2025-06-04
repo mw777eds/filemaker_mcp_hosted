@@ -122,14 +122,21 @@ def create_gradio_function(tool_data: Dict[str, Any]) -> Callable:
             'boolean': 'bool'
         }
         
+        # Separate required and optional parameters
+        required_params = []
+        optional_params = []
+        
         for param_name, param_info in properties.items():
             param_type = param_info.get('type', 'string')
             python_type = type_mapping.get(param_type, 'str')
             
             if param_name in required:
-                param_list.append(f"{param_name}: {python_type}")
+                required_params.append(f"{param_name}: {python_type}")
             else:
-                param_list.append(f"{param_name}: {python_type} = None")
+                optional_params.append(f"{param_name}: {python_type} = None")
+        
+        # Combine with required parameters first
+        param_list = required_params + optional_params
 
         param_str = ", ".join(param_list)
 
@@ -263,7 +270,7 @@ def main():
         # Launch Gradio with MCP server enabled
         log_info("Starting Gradio server with MCP support...")
         demo.launch(
-            server_port=7860,
+            server_port=0,  # Let Gradio find an available port
             mcp_server=True,
             share=False
         )
