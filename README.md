@@ -92,25 +92,34 @@ docker-compose up -d
 
 ## Claude Configuration
 
-### For HTTP+SSE (Web Deployment)
+### For HTTP+SSE (Recommended)
 
-Add to your Claude Desktop configuration:
+1. **Start the MCP server first:**
+   ```bash
+   python gradio_mcp_server.py
+   ```
 
-```json
-{
-  "mcpServers": {
-    "filemaker-mcp": {
-      "command": "npx",
-      "args": [
-        "mcp-remote", 
-        "http://your-server:7860/gradio_api/mcp/sse"
-      ]
-    }
-  }
-}
-```
+2. **Note the server URL from the logs:**
+   Look for: `🔨 MCP server (using SSE) running at: http://127.0.0.1:XXXX/gradio_api/mcp/sse`
 
-### For Local Development (stdio)
+3. **Add to your Claude Desktop configuration:**
+   ```json
+   {
+     "mcpServers": {
+       "filemaker-mcp": {
+         "command": "npx",
+         "args": [
+           "mcp-remote", 
+           "http://127.0.0.1:7860/gradio_api/mcp/sse"
+         ]
+       }
+     }
+   }
+   ```
+
+4. **Restart Claude Desktop** to pick up the new configuration.
+
+### For Local Development (stdio - Legacy)
 
 ```json
 {
@@ -124,6 +133,13 @@ Add to your Claude Desktop configuration:
   }
 }
 ```
+
+### Troubleshooting Connection Issues
+
+- Ensure the server is running before starting Claude
+- Check that the port number in your config matches the server logs
+- Verify no firewall is blocking the connection
+- Look for error messages in both server and Claude logs
 
 ## Architecture
 

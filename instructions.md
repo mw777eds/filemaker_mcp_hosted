@@ -84,6 +84,16 @@ GRADIO_MCP_SERVER=True
 
 ## Claude Configuration (After Deployment)
 
+**IMPORTANT**: Make sure your Gradio MCP server is running before configuring Claude!
+
+### Step 1: Start the MCP Server
+```bash
+python gradio_mcp_server.py
+```
+
+Wait for the message: `🔨 MCP server (using SSE) running at: http://127.0.0.1:XXXX/gradio_api/mcp/sse`
+
+### Step 2: Configure Claude Desktop
 Instead of stdio transport, Claude will connect via HTTP:
 
 ```json
@@ -93,21 +103,20 @@ Instead of stdio transport, Claude will connect via HTTP:
       "command": "npx",
       "args": [
         "mcp-remote",
-        "http://your-deployed-server:7860/gradio_api/mcp/sse"
+        "http://127.0.0.1:7860/gradio_api/mcp/sse"
       ]
     }
   }
 }
 ```
 
-Or if the MCP client supports direct HTTP+SSE:
-```json
-{
-  "mcpServers": {
-    "filemaker-mcp": {
-      "url": "http://your-deployed-server:7860/gradio_api/mcp/sse",
-      "transport": "sse"
-    }
-  }
-}
-```
+**Note**: Replace `7860` with the actual port shown in your server logs if different.
+
+### Step 3: Restart Claude Desktop
+After updating the configuration, restart Claude Desktop to pick up the new MCP server.
+
+### Troubleshooting
+- Ensure the server is running and accessible at the URL
+- Check that no firewall is blocking the connection
+- Verify the port number matches what your server is using
+- Look for any error messages in the server logs
