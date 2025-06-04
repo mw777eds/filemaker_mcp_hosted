@@ -269,11 +269,28 @@ def main():
         
         # Launch Gradio with MCP server enabled
         log_info("Starting Gradio server with MCP support...")
-        demo.launch(
-            server_port=0,  # Let Gradio find an available port
-            mcp_server=True,
-            share=False
-        )
+        
+        # Try different ports if the default is busy
+        ports_to_try = [7860, 7861, 7862, 7863, 7864]
+        
+        for port in ports_to_try:
+            try:
+                log_info(f"Attempting to start server on port {port}...")
+                demo.launch(
+                    server_port=port,
+                    mcp_server=True,
+                    share=False,
+                    prevent_thread_lock=False
+                )
+                break
+            except OSError as e:
+                if "Address already in use" in str(e) or "Cannot find empty port" in str(e):
+                    log_info(f"Port {port} is busy, trying next port...")
+                    continue
+                else:
+                    raise
+        else:
+            raise OSError("Could not find an available port in range 7860-7864")
 
     except Exception as e:
         import traceback
