@@ -16,8 +16,8 @@ This project implements a Model Context Protocol (MCP) server that dynamically e
 1.  **Clone the repository:**
 
     ```bash
-    git clone <repository_url>
-    cd mcp-server-demo
+    git clone https://github.com/mw777eds/filemaker_mcp_hosted.git
+    cd filemaker_mcp_hosted
     ```
 
 2.  **Create a virtual environment:**
