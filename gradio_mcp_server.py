@@ -7,6 +7,8 @@ from typing import Any, Dict, Callable, List
 import sys
 import time
 from urllib.parse import urlencode
+import signal
+import threading
 
 def log_info(msg):
     print(msg, file=sys.stderr)
@@ -26,6 +28,16 @@ FM_HOST = os.getenv('FM_HOST')
 FM_DATABASE = os.getenv('FM_DATABASE')
 FM_LAYOUT = os.getenv('FM_LAYOUT')
 
+# Token cache for FileMaker authentication
+_fm_token_cache = {
+    "token": None,
+    "expires": 0,
+    "lock": threading.Lock()
+}
+
+# Global shutdown flag
+_shutdown_requested = False
+
 def validate_environment():
     """Validate required environment variables are set"""
     required_vars = ['FM_USERNAME', 'FM_PASSWORD', 'FM_HOST', 'FM_DATABASE', 'FM_LAYOUT']
@@ -36,9 +48,18 @@ def validate_environment():
         return False
     return True
 
-# Authenticate and get token
+# Authenticate and get token with caching
 def get_fm_token():
-    log_info("Attempting to get FileMaker token...")
+    current_time = time.time()
+    
+    # Check cache first (thread-safe)
+    with _fm_token_cache["lock"]:
+        if (_fm_token_cache["token"] and 
+            current_time < _fm_token_cache["expires"]):
+            log_info("Using cached FileMaker token")
+            return _fm_token_cache["token"]
+    
+    log_info("Attempting to get new FileMaker token...")
     start_time = time.time()
     url = f"https://{FM_HOST}/fmi/data/v1/databases/{FM_DATABASE}/sessions"
     try:
@@ -51,7 +72,13 @@ def get_fm_token():
         )
         response.raise_for_status()
         token = response.json()['response']['token']
-        log_info(f"FileMaker token obtained successfully in {time.time() - start_time:.2f} seconds.")
+        
+        # Cache the token (FileMaker tokens typically last 15 minutes)
+        with _fm_token_cache["lock"]:
+            _fm_token_cache["token"] = token
+            _fm_token_cache["expires"] = current_time + (14 * 60)  # 14 minutes for safety
+        
+        log_info(f"FileMaker token obtained and cached successfully in {time.time() - start_time:.2f} seconds.")
         return token
     except requests.exceptions.Timeout:
         log_error(f"FileMaker token request timed out after {time.time() - start_time:.2f} seconds")
@@ -284,6 +311,12 @@ def {name}({param_str}) -> str:
         log_error(f"Error creating function: {str(e)}")
         return None
 
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    global _shutdown_requested
+    log_info(f"Received signal {signum}, initiating graceful shutdown...")
+    _shutdown_requested = True
+
 def create_fallback_interface():
     """Create a simple interface when tools can't be loaded"""
     def show_status():
@@ -407,6 +440,10 @@ def setup_gradio_interface():
 def main():
     """Main function to run the server"""
     try:
+        # Set up signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        
         # Validate environment first
         if not validate_environment():
             log_error("Environment validation failed. Exiting.")
@@ -421,7 +458,7 @@ def main():
             sys.exit(1)
         
         # Launch Gradio with MCP server enabled
-        log_info("Starting Gradio server with MCP support...")
+        log_info("Starting Gradio server with MCP support for production deployment...")
         
         # Try different ports if the default is busy
         ports_to_try = [7860, 7861, 7862, 7863, 7864]
@@ -431,10 +468,14 @@ def main():
                 log_info(f"Attempting to start server on port {port}...")
                 demo.launch(
                     server_port=port,
+                    server_name="0.0.0.0",  # Listen on all interfaces for server deployment
                     mcp_server=True,
                     share=False,
-                    prevent_thread_lock=False
+                    prevent_thread_lock=False,
+                    show_error=True,
+                    quiet=False
                 )
+                log_info(f"Server successfully started on port {port}")
                 break
             except OSError as e:
                 if "Address already in use" in str(e) or "Cannot find empty port" in str(e):
@@ -448,11 +489,13 @@ def main():
             sys.exit(1)
 
     except KeyboardInterrupt:
-        log_info("Server shutdown requested by user")
+        log_info("Server shutdown requested by user (Ctrl+C)")
         sys.exit(0)
     except Exception as e:
         log_error(f"Server failed to start: {str(e)}")
         sys.exit(1)
+    finally:
+        log_info("Server shutdown complete")
 
 if __name__ == "__main__":
     main()
