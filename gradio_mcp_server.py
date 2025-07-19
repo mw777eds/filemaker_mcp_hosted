@@ -442,6 +442,20 @@ def setup_gradio_interface():
         log_error(f"Error in setup_gradio_interface: {str(e)}")
         return create_fallback_interface()
 
+def wait_for_quit():
+    """Wait for Q[Enter] to quit the server cleanly."""
+    while True:
+        try:
+            user_input = input("Press Q[Enter] at any time to shut down the server cleanly: ")
+            if user_input.strip().lower() == "q":
+                print("Shutdown requested by user (Q[Enter])")
+                os._exit(0)
+        except EOFError:
+            # In case input is closed, just exit
+            os._exit(0)
+        except Exception:
+            pass
+
 def main():
     """Main function to run the server"""
     try:
@@ -467,6 +481,10 @@ def main():
         
         # Try different ports if the default is busy
         ports_to_try = [7860, 7861, 7862, 7863, 7864]
+
+        # Start the Q[Enter] shutdown thread
+        threading.Thread(target=wait_for_quit, daemon=True).start()
+        print("🔨 MCP server (using SSE) running. Q[Enter] will close cleanly.", file=sys.stderr)
         
         for port in ports_to_try:
             try:
