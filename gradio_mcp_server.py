@@ -445,6 +445,10 @@ def setup_gradio_interface():
 def wait_for_quit():
     """Wait for Q[Enter] to quit the server cleanly."""
     import os
+    import warnings
+
+    # Suppress resource_tracker warnings globally before shutdown
+    warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker: There appear to be .* leaked semaphore objects")
 
     while True:
         try:
