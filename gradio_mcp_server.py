@@ -461,6 +461,17 @@ def wait_for_quit():
         except Exception:
             pass
 
+def run_gradio_server(demo, port):
+    demo.launch(
+        server_port=port,
+        server_name="0.0.0.0",  # Listen on all interfaces for server deployment
+        mcp_server=True,
+        share=False,
+        prevent_thread_lock=True,  # Allow main thread to continue
+        show_error=True,
+        quiet=False
+    )
+
 def main():
     """Main function to run the server"""
     try:
@@ -487,22 +498,12 @@ def main():
         # Try different ports if the default is busy
         ports_to_try = [7860, 7861, 7862, 7863, 7864]
 
-        # Start the Q[Enter] shutdown thread
-        threading.Thread(target=wait_for_quit, daemon=True).start()
-        print("🔨 MCP server (using SSE) running. Q[Enter] will close cleanly.", file=sys.stderr)
-        
+        server_thread = None
         for port in ports_to_try:
             try:
                 log_info(f"Attempting to start server on port {port}...")
-                demo.launch(
-                    server_port=port,
-                    server_name="0.0.0.0",  # Listen on all interfaces for server deployment
-                    mcp_server=True,
-                    share=False,
-                    prevent_thread_lock=False,
-                    show_error=True,
-                    quiet=False
-                )
+                server_thread = threading.Thread(target=run_gradio_server, args=(demo, port), daemon=True)
+                server_thread.start()
                 log_info(f"Server successfully started on port {port}")
                 break
             except OSError as e:
@@ -515,6 +516,12 @@ def main():
         else:
             log_error("Could not find an available port in range 7860-7864")
             sys.exit(1)
+
+        print("🔨 MCP server (using SSE) running. Q[Enter] will close cleanly.", file=sys.stderr)
+        wait_for_quit()  # This will block until Q[Enter] is pressed
+
+        log_info("Shutdown requested, exiting process.")
+        os._exit(0)
 
     except KeyboardInterrupt:
         log_info("Server shutdown requested by user (Ctrl+C)")
