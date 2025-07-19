@@ -444,20 +444,16 @@ def setup_gradio_interface():
 
 def wait_for_quit():
     """Wait for Q[Enter] to quit the server cleanly."""
-    import signal
+    import os
 
     while True:
         try:
             user_input = input("Press Q[Enter] at any time to shut down the server cleanly: ")
             if user_input.strip().lower() == "q":
                 print("Shutdown requested by user (Q[Enter])")
-                # Send SIGINT to the main process to trigger a graceful shutdown
-                os.kill(os.getpid(), signal.SIGINT)
-                return
+                os._exit(0)
         except EOFError:
-            # In case input is closed, just exit
-            os.kill(os.getpid(), signal.SIGINT)
-            return
+            os._exit(0)
         except Exception:
             pass
 
