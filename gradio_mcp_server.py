@@ -449,10 +449,10 @@ def wait_for_quit():
             user_input = input("Press Q[Enter] at any time to shut down the server cleanly: ")
             if user_input.strip().lower() == "q":
                 print("Shutdown requested by user (Q[Enter])")
-                sys.exit(0)
+                os._exit(0)
         except EOFError:
             # In case input is closed, just exit
-            sys.exit(0)
+            os._exit(0)
         except Exception:
             pass
 
