@@ -474,6 +474,7 @@ def run_gradio_server(demo, port):
 
 def main():
     """Main function to run the server"""
+    import warnings
     try:
         # Set up signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, signal_handler)
@@ -521,6 +522,8 @@ def main():
         wait_for_quit()  # This will block until Q[Enter] is pressed
 
         log_info("Shutdown requested, exiting process.")
+        # Suppress multiprocessing resource_tracker warnings on shutdown
+        warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker: There appear to be .* leaked semaphore objects")
         os._exit(0)
 
     except KeyboardInterrupt:
