@@ -472,39 +472,34 @@ def run_gradio_server(demo, port):
         quiet=False
     )
 
-def main():
-    """Main function to run the server"""
-    import warnings
+import multiprocessing
+
+def gradio_server_entrypoint():
+    """Entrypoint for the Gradio server subprocess."""
     try:
-        # Set up signal handlers for graceful shutdown
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
-        
         # Validate environment first
         if not validate_environment():
             log_error("Environment validation failed. Exiting.")
             sys.exit(1)
-        
+
         # Setup Gradio interface with MCP support
         log_info("Setting up Gradio interface with MCP support...")
         demo = setup_gradio_interface()
-        
+
         if not demo:
             log_error("Failed to create Gradio interface. Exiting.")
             sys.exit(1)
-        
+
         # Launch Gradio with MCP server enabled
         log_info("Starting Gradio server with MCP support for production deployment...")
-        
+
         # Try different ports if the default is busy
         ports_to_try = [7860, 7861, 7862, 7863, 7864]
 
-        server_thread = None
         for port in ports_to_try:
             try:
                 log_info(f"Attempting to start server on port {port}...")
-                server_thread = threading.Thread(target=run_gradio_server, args=(demo, port), daemon=True)
-                server_thread.start()
+                run_gradio_server(demo, port)
                 log_info(f"Server successfully started on port {port}")
                 break
             except OSError as e:
@@ -518,14 +513,6 @@ def main():
             log_error("Could not find an available port in range 7860-7864")
             sys.exit(1)
 
-        print("🔨 MCP server (using SSE) running. Q[Enter] will close cleanly.", file=sys.stderr)
-        wait_for_quit()  # This will block until Q[Enter] is pressed
-
-        log_info("Shutdown requested, exiting process.")
-        # Suppress multiprocessing resource_tracker warnings on shutdown
-        warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker: There appear to be .* leaked semaphore objects")
-        os._exit(0)
-
     except KeyboardInterrupt:
         log_info("Server shutdown requested by user (Ctrl+C)")
         sys.exit(0)
@@ -534,6 +521,25 @@ def main():
         sys.exit(1)
     finally:
         log_info("Server shutdown complete")
+
+def main():
+    """Main process: start Gradio server in subprocess and handle shutdown."""
+    server_proc = multiprocessing.Process(target=gradio_server_entrypoint)
+    server_proc.start()
+    print("🔨 MCP server (using SSE) running. Q[Enter] will close cleanly.", file=sys.stderr)
+    try:
+        while True:
+            user_input = input("Press Q[Enter] at any time to shut down the server cleanly: ")
+            if user_input.strip().lower() == "q":
+                print("Shutdown requested by user (Q[Enter])")
+                break
+    except (EOFError, KeyboardInterrupt):
+        print("Shutdown requested by user (Ctrl+C or EOF)")
+    finally:
+        if server_proc.is_alive():
+            server_proc.terminate()
+            server_proc.join(timeout=5)
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
