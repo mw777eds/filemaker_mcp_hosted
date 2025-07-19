@@ -467,7 +467,7 @@ def run_gradio_server(demo, port):
         server_name="0.0.0.0",  # Listen on all interfaces for server deployment
         mcp_server=True,
         share=False,
-        prevent_thread_lock=True,  # Allow main thread to continue
+        prevent_thread_lock=False,  # Block so subprocess stays alive
         show_error=True,
         quiet=False
     )
