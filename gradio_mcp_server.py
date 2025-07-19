@@ -444,24 +444,20 @@ def setup_gradio_interface():
 
 def wait_for_quit():
     """Wait for Q[Enter] to quit the server cleanly."""
-    import multiprocessing
-    import warnings
+    import signal
 
     while True:
         try:
             user_input = input("Press Q[Enter] at any time to shut down the server cleanly: ")
             if user_input.strip().lower() == "q":
                 print("Shutdown requested by user (Q[Enter])")
-                # Attempt to clean up multiprocessing semaphores before exit
-                try:
-                    multiprocessing.active_children()
-                except Exception:
-                    pass
-                warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker: There appear to be .* leaked semaphore objects")
-                os._exit(0)
+                # Send SIGINT to the main process to trigger a graceful shutdown
+                os.kill(os.getpid(), signal.SIGINT)
+                return
         except EOFError:
             # In case input is closed, just exit
-            os._exit(0)
+            os.kill(os.getpid(), signal.SIGINT)
+            return
         except Exception:
             pass
 
