@@ -476,6 +476,9 @@ import multiprocessing
 
 def gradio_server_entrypoint():
     """Entrypoint for the Gradio server subprocess."""
+    import warnings
+    # Suppress resource_tracker warnings in the subprocess
+    warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker: There appear to be .* leaked semaphore objects")
     try:
         # Validate environment first
         if not validate_environment():
