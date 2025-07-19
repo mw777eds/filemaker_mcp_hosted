@@ -442,67 +442,48 @@ def setup_gradio_interface():
         log_error(f"Error in setup_gradio_interface: {str(e)}")
         return create_fallback_interface()
 
-def wait_for_quit():
-    """Wait for Q[Enter] to quit the server cleanly."""
-    import os
-    import warnings
+# wait_for_quit is no longer needed in option 1
 
-    # Suppress resource_tracker warnings globally before shutdown
-    warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker: There appear to be .* leaked semaphore objects")
+# run_gradio_server is no longer needed in option 1
 
-    while True:
-        try:
-            user_input = input("Press Q[Enter] at any time to shut down the server cleanly: ")
-            if user_input.strip().lower() == "q":
-                print("Shutdown requested by user (Q[Enter])")
-                os._exit(0)
-        except EOFError:
-            os._exit(0)
-        except Exception:
-            pass
-
-def run_gradio_server(demo, port):
-    demo.launch(
-        server_port=port,
-        server_name="0.0.0.0",  # Listen on all interfaces for server deployment
-        mcp_server=True,
-        share=False,
-        prevent_thread_lock=False,  # Block so subprocess stays alive
-        show_error=True,
-        quiet=False
-    )
-
-import multiprocessing
-
-def gradio_server_entrypoint():
-    """Entrypoint for the Gradio server subprocess."""
-    import warnings
-    # Suppress resource_tracker warnings in the subprocess
-    warnings.filterwarnings("ignore", category=UserWarning, message="resource_tracker: There appear to be .* leaked semaphore objects")
+def main():
+    """Main function to run the server (option 1: not pretty, but not uncommon)."""
     try:
+        # Set up signal handlers for graceful shutdown
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        
         # Validate environment first
         if not validate_environment():
             log_error("Environment validation failed. Exiting.")
             sys.exit(1)
-
+        
         # Setup Gradio interface with MCP support
         log_info("Setting up Gradio interface with MCP support...")
         demo = setup_gradio_interface()
-
+        
         if not demo:
             log_error("Failed to create Gradio interface. Exiting.")
             sys.exit(1)
-
+        
         # Launch Gradio with MCP server enabled
         log_info("Starting Gradio server with MCP support for production deployment...")
-
+        
         # Try different ports if the default is busy
         ports_to_try = [7860, 7861, 7862, 7863, 7864]
 
         for port in ports_to_try:
             try:
                 log_info(f"Attempting to start server on port {port}...")
-                run_gradio_server(demo, port)
+                demo.launch(
+                    server_port=port,
+                    server_name="0.0.0.0",  # Listen on all interfaces for server deployment
+                    mcp_server=True,
+                    share=False,
+                    prevent_thread_lock=False,
+                    show_error=True,
+                    quiet=False
+                )
                 log_info(f"Server successfully started on port {port}")
                 break
             except OSError as e:
@@ -524,25 +505,6 @@ def gradio_server_entrypoint():
         sys.exit(1)
     finally:
         log_info("Server shutdown complete")
-
-def main():
-    """Main process: start Gradio server in subprocess and handle shutdown."""
-    server_proc = multiprocessing.Process(target=gradio_server_entrypoint)
-    server_proc.start()
-    print("🔨 MCP server (using SSE) running. Q[Enter] will close cleanly.", file=sys.stderr)
-    try:
-        while True:
-            user_input = input("Press Q[Enter] at any time to shut down the server cleanly: ")
-            if user_input.strip().lower() == "q":
-                print("Shutdown requested by user (Q[Enter])")
-                break
-    except (EOFError, KeyboardInterrupt):
-        print("Shutdown requested by user (Ctrl+C or EOF)")
-    finally:
-        if server_proc.is_alive():
-            server_proc.terminate()
-            server_proc.join(timeout=5)
-        sys.exit(0)
 
 if __name__ == "__main__":
     main()
