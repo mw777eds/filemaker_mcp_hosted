@@ -1,7 +1,7 @@
 import os
 import requests
 import gradio as gr
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 import json
 from typing import Any, Dict, Callable, List
 import sys
@@ -19,6 +19,11 @@ def log_error(msg):
 log_info("Attempting to launch gradio_mcp_server.py - version check")
 
 print("Starting gradio_mcp_server.py", file=sys.stderr)
+
+# Check for .env file and fail gracefully if missing
+if not find_dotenv():
+    print("ERROR: .env file not found. Please create a .env file with the required environment variables.", file=sys.stderr)
+    sys.exit(1)
 
 load_dotenv()
 
